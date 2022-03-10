@@ -1,0 +1,90 @@
+import subprocess
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import re
+import pickle
+df = pd.read_csv('/content/Hope_KAN_train.csv', encoding = 'latin1').fillna('')
+
+# Create a list of punctuation marks
+puncts = [',', '.', '"', ':', ')', '(', '-', '!', '?', '|', ';', "'", '$', '&', '/', '[', ']', '>', '%', '=', '#', '*', '+', '\\', '•',  '~', '@', '£', 
+ '•', '_', '{', '}', '©', '^', '®', '`',  '<', '→', '°', '€', '™', '›',  '♥', '←', '×', '§', '″', '′', 'Â', '█', '½', 'à', '…', 
+ '“', '★', '”', '–', '●', 'â', '►', '−', '¢', '²', '¬', '░', '¶', '↑', '±', '¿', '▾', '═', '¦', '║', '―', '¥', '▓', '—', '‹', '─', 
+ '▒', '：', '¼', '⊕', '▼', '▪', '†', '■', '’', '▀', '¨', '▄', '♫', '☆', 'é', '¯', '♦', '¤', '▲', 'è', '¸', '¾', 'Ã', '⋅', '‘', '∞', 
+ '∙', '）', '↓', '、', '│', '（', '»', '，', '♪', '╩', '╚', '³', '・', '╦', '╣', '╔', '╗', '▬', '❤', 'ï', 'Ø', '¹', '≤', '‡', '√']
+
+# Code to replace punctuations with whitespaces
+def clean_text(x):
+    x = str(x)
+    for punct in puncts:
+        if punct in x:
+            x = x.replace(punct, ' ')
+    return x
+
+# Cleaning URLs, twitter user_handles, punctuations, whitespaces and converting to lowercase
+df['Cleaned'] = df['tweet'].apply(lambda x: re.sub(r'http\S+', '', x))
+df['Cleaned'] = df['Cleaned'].apply(lambda x: re.sub("@[\w]*", '', x))
+df['Cleaned'] = df['Cleaned'].apply(lambda x: clean_text(x))
+df['Cleaned'] = df['Cleaned'].str.lower()
+df['Cleaned'] = df['Cleaned'].apply(lambda x:' '.join(x.split()))
+df['Sentiment'] = df['label']
+df = df.drop(['tweet','label'],axis=1)
+print(df.head())
+
+!pip install transformers
+
+# section two
+import torch
+from torch.autograd import Variable
+from torch import IntTensor
+import transformers as ppb
+import warnings
+warnings.filterwarnings('ignore')
+
+!pip3 install sentencepiece
+
+from transformers import AutoModel, AutoTokenizer
+
+tokenizer = AutoTokenizer.from_pretrained('ai4bharat/indic-bert')
+model = AutoModel.from_pretrained('ai4bharat/indic-bert')
+
+tokenized = df2['Cleaned'].apply((lambda x: tokenizer.encode(x, add_special_tokens=True,max_length=50,truncation=True )))
+# section 6 padding
+#padding
+max_len = 0
+for i in tokenized.values:
+  #print(len(i))
+  if len(i) > max_len:
+    max_len = len(i)
+
+padded = np.array([i + [0]*(max_len-len(i)) for i in tokenized.values])
+# section 7 masking
+#masking
+attention_mask = np.where(padded != 0, 1, 0)
+#print(attention_mask[0])
+attention_mask.shape
+
+#bert model
+input_ids = torch.tensor(padded)  
+attention_mask = torch.tensor(attention_mask)
+
+with torch.no_grad():
+  last_hidden_states =model(input_ids, attention_mask=attention_mask)
+
+features = last_hidden_states[0][:,0,:].numpy()
+
+# section 9 importing skitelearn libraries for classification
+from sklearn.model_selection import train_test_split
+from sklearn.model_selection import GridSearchCV
+from sklearn.model_selection import cross_val_score
+from sklearn.metrics import classification_report
+from sklearn.multiclass import OneVsRestClassifier
+train_features, test_features, train_labels, test_labels = train_test_split(features, df['Label'],  test_size=0.3,random_state=50)
+from sklearn.model_selection import GridSearchCV
+#train_features, test_features, train_labels, test_labels = train_test_split(features, df['Sentiment'],  test_size=0.3,random_state=50)
+#Import svm model
+from sklearn import svm
+parameters = {'kernel':('linear', 'rbf'), 'C':[1, 10]}
+svc = svm.SVC()
+clf = OneVsRestClassifier(GridSearchCV(svc, parameters,cv=10))
+clf.fit(train_features,train_labels)
